@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>http://example.com</id>
+    <title>Hexo</title>
+    <link href="http://example.com" />
+    <updated>2021-08-21T04:42:31.278Z</updated>
+    <entry>
+        <id>http://example.com/2021/08/21/QT%E5%85%B3%E9%97%AD%E7%AA%97%E5%8F%A3%E6%97%B6%E6%98%BE%E7%A4%BA%E7%A8%8B%E5%BA%8F%E5%BC%82%E5%B8%B8%E7%BB%93%E6%9D%9F/</id>
+        <title></title>
+        <link rel="alternate" href="http://example.com/2021/08/21/QT%E5%85%B3%E9%97%AD%E7%AA%97%E5%8F%A3%E6%97%B6%E6%98%BE%E7%A4%BA%E7%A8%8B%E5%BA%8F%E5%BC%82%E5%B8%B8%E7%BB%93%E6%9D%9F/"/>
+        <content type="html">&lt;h1 id=&#34;qt关闭窗口时显示程序异常结束解决办法&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#qt关闭窗口时显示程序异常结束解决办法&#34;&gt;#&lt;/a&gt; QT 关闭窗口时显示程序 “异常结束” 解决办法&lt;/h1&gt;
+&lt;h2 id=&#34;1问题概述&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#1问题概述&#34;&gt;#&lt;/a&gt; 1. 问题概述&lt;/h2&gt;
+&lt;p&gt;使用 QT 运行程序时，程序正常运行，但在关闭窗口后，程序输出窗口发现程序并没有立即关闭，而是等待一会儿后打印输出 “程序异常结束 “，若下图所示：&lt;/p&gt;
+&lt;p&gt;&lt;img src=&#34;C:%5CUsers%5CZWP%5CDesktop%5C%E5%8D%9A%E5%AE%A2%5C%E7%A8%8B%E5%BA%8F%E5%BC%82%E5%B8%B8%E7%BB%93%E6%9D%9F.png&#34; alt=&#34;程序异常结束&#34;&gt;&lt;/p&gt;
+&lt;p&gt;有人给出了一种暴力解决方案：修改 main.cpp 函数中的这两行代码&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&#34;language-c++&#34;&gt;//	原代码
+//    MainWindow w;
+//    w.show();
+
+//	修改后
+    MainWindow* w=new MainWindow;
+    w-&amp;gt;show();
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;emm… 确实可以让它不再报错了，可是如果你在析构函数里放个打印输出函数的话，你会发现你关闭窗口后它并不会给你打印，也就是说你关闭窗口时它并不执行析构函数！一些 new 出来的变量内存并不能很好地释放掉，在 QT 中运行还好，但如果你发布成软件的话在进行关闭软件操作时就会出现问题，可以说这并没有解决真正的问题。下面介绍产生这种报错的原因的解决方法。&lt;/p&gt;
+&lt;p&gt;&lt;mark&gt;注：本文分析的是关闭窗口后报” 程序异常结束 “错误，而不是程序刚开始运行或运行过程中报错，后者产生的原因有很多，建议点击 QT 中的调试 -&amp;gt; 开始调试 -&amp;gt;start debuging for…，运行时会直接给你找出出错的语句&lt;/mark&gt;&lt;/p&gt;
+&lt;h2 id=&#34;2问题产生原因与解决方法&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#2问题产生原因与解决方法&#34;&gt;#&lt;/a&gt; 2. 问题产生原因与解决方法&lt;/h2&gt;
+&lt;h3 id=&#34;1对象被多次析构&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#1对象被多次析构&#34;&gt;#&lt;/a&gt; ①对象被多次析构&lt;/h3&gt;
+&lt;p&gt;存在这种问题时，如果关闭窗口，程序输出窗口会等 2~3s 就会报” 程序异常结束 “，那么大概率是对象被多次析构了，一下情况会导致对象被多次析构：&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&#34;language-c++&#34;&gt;/* 1.new一个新对象时给它配置了父对象，而在别处或析构函数中delete了它的对象指针
+	实际上，给某对象配置父对象后，父对象销毁时该对象指针会被自动销毁，无需去主动销毁它
+	但如果new的是一个子线程，则必须主动销毁它，销毁方式见②*/
+//如：
+QCPItemRect* selectRect=new QCPItemRect(this);
+delete selectRect;
+
+/* 2.试图去delete一个智能指针
+	智能指针不需要去主动销毁*/
+//如：
+shared_ptr&amp;lt;InterfaceForPython&amp;gt; p_obj_python=make_shared&amp;lt;InterfaceForPython&amp;gt;();
+delete p_obj_python;
+
+/* 3.同一个对象指针被delete了多次*/
+//如：
+QCPItemRect* selectRect=new QCPItemRect(this);
+delete selectRect;
+delete selectRect;	//最后这次delete一定是在某个析构函数中，不然运行中就会报错
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;mark&gt;解决办法：当然是找出在哪里用了不该用的 delete 然后删掉咯&lt;/mark&gt;&lt;/p&gt;
+&lt;h3 id=&#34;2存在while死循环或耗时任务无法在短时间内运行完毕或多线程对象指针没有主动销毁&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#2存在while死循环或耗时任务无法在短时间内运行完毕或多线程对象指针没有主动销毁&#34;&gt;#&lt;/a&gt; ②存在 while 死循环或耗时任务无法在短时间内运行完毕，或多线程对象指针没有主动销毁&lt;/h3&gt;
+&lt;p&gt;存在这种问题时，如果关闭窗口，程序输出窗口会等待很长时间，然后报” 程序异常结束 “。这个就不用多说了，尤其多线程中可能就需要 while 死循环或存在耗时任务来不断执行某些代码。&lt;/p&gt;
+&lt;p&gt;&lt;mark&gt;解决办法如下：&lt;/mark&gt;&lt;/p&gt;
+&lt;pre&gt;&lt;code class=&#34;language-c++&#34;&gt;/*若是存在while死循环或耗时任务无法在短时间内运行完毕，需要在循环任务中添加跳出标志位，在该函数所在对象的父对象的析构函数中修改标志位的值，达到强制跳出循环的目的*/
+class Myclass: QObject
+&amp;#123;
+    Myclass(QObject *parent = nullptr);
+    void noStopRun()&amp;#123;while(runflag)&amp;#123;...&amp;#125;	&amp;#125;;	//runflag是跳出标志位,noStopRun()函数中while(runflag)&amp;#123;...&amp;#125;是一个死循环或耗时任务
+    bool runflag=true;
+&amp;#125;
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+&amp;#123;
+        myObject.noStopRun();	//myObject为在MainWindow的类声明中定义的成员变量：Myclass myObject;
+&amp;#125;
+MainWindow::~MainWindow()
+&amp;#123;
+    myObject.runflag=false;	//使子函数退出死循环
+&amp;#125;
+
+/*若是多线程对象指针没有主动销毁，按此步骤销毁*/
+MainWindow::~MainWindow()	
+&amp;#123;
+    //若存在while死循环或耗时任务无法在短时间内运行完毕，按上面方式添加标志位，并在此赋false；若不存在则不需要这行代码
+    //thread_manager-&amp;gt;runflag=false;	
+    
+    thread_manager-&amp;gt;quit();	//thread_manager是一个子线程
+    thread_manager-&amp;gt;wait();  //必须等待线程结束
+    thread_manager-&amp;gt;deleteLater();
+    delete ui;
+    delete thread_manager;
+&amp;#125;
+        
+&lt;/code&gt;&lt;/pre&gt;
+</content>
+        <updated>2021-08-21T04:42:31.278Z</updated>
+    </entry>
+    <entry>
+        <id>http://example.com/2021/08/21/hello-world/</id>
+        <title>Hello World</title>
+        <link rel="alternate" href="http://example.com/2021/08/21/hello-world/"/>
+        <content type="html">&lt;p&gt;Welcome to &lt;a href=&#34;https://hexo.io/&#34;&gt;Hexo&lt;/a&gt;! This is your very first post. Check &lt;a href=&#34;https://hexo.io/docs/&#34;&gt;documentation&lt;/a&gt; for more info. If you get any problems when using Hexo, you can find the answer in &lt;a href=&#34;https://hexo.io/docs/troubleshooting.html&#34;&gt;troubleshooting&lt;/a&gt; or you can ask me on &lt;a href=&#34;https://github.com/hexojs/hexo/issues&#34;&gt;GitHub&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id=&#34;quick-start&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#quick-start&#34;&gt;#&lt;/a&gt; Quick Start&lt;/h2&gt;
+&lt;h3 id=&#34;create-a-new-post&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#create-a-new-post&#34;&gt;#&lt;/a&gt; Create a new post&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;figcaption data-lang=&#34;bash&#34;&gt;&lt;span&gt;h&lt;/span&gt;&lt;/figcaption&gt;&lt;table&gt;&lt;tr&gt;&lt;td data-num=&#34;1&#34;&gt;&lt;/td&gt;&lt;td&gt;&lt;pre&gt;$ hexo new &lt;span class=&#34;token string&#34;&gt;&#34;My New Post&#34;&lt;/span&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/writing.html&#34;&gt;Writing&lt;/a&gt;&lt;/p&gt;
+&lt;h3 id=&#34;run-server&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#run-server&#34;&gt;#&lt;/a&gt; Run server&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;figcaption data-lang=&#34;bash&#34;&gt;&lt;span&gt;h&lt;/span&gt;&lt;/figcaption&gt;&lt;table&gt;&lt;tr&gt;&lt;td data-num=&#34;1&#34;&gt;&lt;/td&gt;&lt;td&gt;&lt;pre&gt;$ hexo server&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/server.html&#34;&gt;Server&lt;/a&gt;&lt;/p&gt;
+&lt;h3 id=&#34;generate-static-files&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#generate-static-files&#34;&gt;#&lt;/a&gt; Generate static files&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;figcaption data-lang=&#34;bash&#34;&gt;&lt;span&gt;h&lt;/span&gt;&lt;/figcaption&gt;&lt;table&gt;&lt;tr&gt;&lt;td data-num=&#34;1&#34;&gt;&lt;/td&gt;&lt;td&gt;&lt;pre&gt;$ hexo generate&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/generating.html&#34;&gt;Generating&lt;/a&gt;&lt;/p&gt;
+&lt;h3 id=&#34;deploy-to-remote-sites&#34;&gt;&lt;a class=&#34;markdownIt-Anchor&#34; href=&#34;#deploy-to-remote-sites&#34;&gt;#&lt;/a&gt; Deploy to remote sites&lt;/h3&gt;
+&lt;figure class=&#34;highlight bash&#34;&gt;&lt;figcaption data-lang=&#34;bash&#34;&gt;&lt;span&gt;h&lt;/span&gt;&lt;/figcaption&gt;&lt;table&gt;&lt;tr&gt;&lt;td data-num=&#34;1&#34;&gt;&lt;/td&gt;&lt;td&gt;&lt;pre&gt;$ hexo deploy&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;&lt;p&gt;More info: &lt;a href=&#34;https://hexo.io/docs/one-command-deployment.html&#34;&gt;Deployment&lt;/a&gt;&lt;/p&gt;
+</content>
+        <updated>2021-08-21T04:42:31.275Z</updated>
+    </entry>
+</feed>
